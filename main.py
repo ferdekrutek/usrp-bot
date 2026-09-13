@@ -5,6 +5,7 @@ Punkt startowy bota. Laduje wszystkie cogi z katalogu cogs/, synchronizuje
 komendy slash i uruchamia klienta Discorda.
 """
 
+import asyncio
 import logging
 
 import discord
@@ -59,6 +60,41 @@ async def on_ready():
     log.info("Zalogowano jako %s (ID: %s)", bot.user, bot.user.id)
 
 
+async def run_forever():
+    """
+    Uruchamia bota z reczna obsluga bledu 429 (blokada Cloudflare).
+
+    Darmowy plan Render wysyla ruch z dzielonej puli adresow IP. Jesli inny
+    uzytkownik tej puli zbombardowal API Discorda, Cloudflare blokuje CALY
+    adres na jakis czas - to nie ma nic wspolnego z Twoim kodem ani tokenem.
+    Kazda kolejna proba logowania w trakcie takiej blokady przedluza jej
+    czas trwania, wiec zamiast krotkiego, agresywnego retry (i pozwolenia
+    Renderowi restartowac caly proces) czekamy dlugo i z rosnacym opoznieniem.
+    """
+    backoff_seconds = 60
+    max_backoff_seconds = 1800  # 30 minut
+
+    while True:
+        try:
+            async with bot:
+                await bot.start(config.DISCORD_TOKEN)
+            break  # bot.start() zakonczyl sie normalnie - koniec petli
+        except discord.HTTPException as error:
+            if error.status == 429:
+                log.warning(
+                    "Discord/Cloudflare zwrocily 429 (prawdopodobnie tymczasowa "
+                    "blokada dzielonego IP Render). Czekam %ss przed kolejna proba.",
+                    backoff_seconds,
+                )
+                await asyncio.sleep(backoff_seconds)
+                backoff_seconds = min(backoff_seconds * 2, max_backoff_seconds)
+                continue
+            raise
+        except discord.LoginFailure:
+            log.error("Nieprawidlowy DISCORD_TOKEN - sprawdz zmienna srodowiskowa w Render.")
+            raise
+
+
 def main():
     if not config.DISCORD_TOKEN:
         raise RuntimeError("Brak DISCORD_TOKEN w zmiennych srodowiskowych.")
@@ -66,7 +102,7 @@ def main():
         raise RuntimeError("Brak FIREBASE_URL w zmiennych srodowiskowych.")
 
     run_keep_alive()
-    bot.run(config.DISCORD_TOKEN)
+    asyncio.run(run_forever())
 
 
 if __name__ == "__main__":
