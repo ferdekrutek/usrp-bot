@@ -52,12 +52,8 @@ class ObywatelBot(commands.Bot):
             log.info("Zsynchronizowano %d komend globalnie (propagacja moze potrwac do godziny).", len(synced))
 
 
-bot = ObywatelBot()
-
-
-@bot.event
-async def on_ready():
-    log.info("Zalogowano jako %s (ID: %s)", bot.user, bot.user.id)
+    async def on_ready(self):
+        log.info("Zalogowano jako %s (ID: %s)", self.user, self.user.id)
 
 
 async def run_forever():
@@ -75,6 +71,10 @@ async def run_forever():
     max_backoff_seconds = 1800  # 30 minut
 
     while True:
+        # Nowa instancja przy kazdej probie: discord.py zamyka wewnetrzna
+        # sesje HTTP po nieudanym/przerwanym polaczeniu i nie da sie jej
+        # odtworzyc na tym samym obiekcie (RuntimeError: Session is closed).
+        bot = ObywatelBot()
         try:
             async with bot:
                 await bot.start(config.DISCORD_TOKEN)
