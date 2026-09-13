@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: obywatel-bot
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: DISCORD_TOKEN
+        sync: false
+      - key: GUILD_ID
+        sync: false
+      - key: FIREBASE_URL
+        sync: false
+      - key: FIREBASE_SECRET
+        sync: false
+      - key: ROLE_VERIFIED_ID
+        sync: false
+      - key: ROLE_CITIZEN_ID
+        sync: false
+      - key: ROLE_SENATOR_ID
+        sync: false
+      - key: ROLE_REPRESENTATIVE_ID
+        sync: false
+      - key: ADMIN_ROLE_ID
+        sync: false
+      - key: APPLICATIONS_REVIEW_CHANNEL_ID
+        sync: false
