@@ -24,6 +24,7 @@ EXTENSIONS = [
     "cogs.degrees",
     "cogs.citizen",
     "cogs.party",
+    "cogs.congress",
 ]
 
 intents = discord.Intents.default()

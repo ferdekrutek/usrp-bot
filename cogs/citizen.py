@@ -6,13 +6,17 @@ naukowy, partia, miejsce zamieszkania, SSN). Mozna wyszukac po
 uzytkowniku Discorda ALBO po numerze SSN (dokladnie jedno z dwoch).
 """
 
+from datetime import datetime
 from typing import Optional
 
 import discord
 from discord import app_commands
 from discord.ext import commands
 
+import config
 import firebase_client as db
+from nickname_utils import apply_nickname
+from permissions import is_admin
 
 
 def _normalize_ssn(raw: str) -> str:
@@ -89,6 +93,120 @@ class CitizenCog(commands.Cog):
             discord_tag = citizen.get("discordTag", "Nieznany")
 
         await interaction.response.send_message(embed=_build_profile_embed(citizen, discord_tag))
+
+    @app_commands.command(name="postac-edytuj", description="Poprawia dane postaci obywatela (admin).")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(
+        uzytkownik="Czyje dane edytujesz",
+        pole="Które pole zmienić",
+        wartosc="Nowa wartość tego pola",
+    )
+    @app_commands.choices(pole=[
+        app_commands.Choice(name="Imię", value="firstName"),
+        app_commands.Choice(name="Nazwisko", value="lastName"),
+        app_commands.Choice(name="Zamieszkanie", value="residence"),
+        app_commands.Choice(name="Rok urodzenia", value="birthYear"),
+    ])
+    async def postac_edytuj(
+        self,
+        interaction: discord.Interaction,
+        uzytkownik: discord.Member,
+        pole: app_commands.Choice[str],
+        wartosc: str,
+    ):
+        if not isinstance(interaction.user, discord.Member) or not is_admin(interaction.user):
+            await interaction.response.send_message("Nie masz uprawnień do tej komendy.", ephemeral=True)
+            return
+
+        citizen = await db.get(f"citizens/{uzytkownik.id}")
+        if not citizen:
+            await interaction.response.send_message(
+                f"{uzytkownik.mention} nie jest zweryfikowanym obywatelem.", ephemeral=True
+            )
+            return
+
+        if pole.value == "birthYear":
+            value = wartosc.strip()
+            if not value.isdigit() or not (1900 <= int(value) <= datetime.now().year):
+                await interaction.response.send_message(
+                    "Rok urodzenia musi być liczbą w rozsądnym zakresie (np. 1900–obecny rok).",
+                    ephemeral=True,
+                )
+                return
+            update = {"birthYear": int(value)}
+        else:
+            update = {pole.value: wartosc.strip()}
+
+        ok = await db.patch(f"citizens/{uzytkownik.id}", update)
+        if not ok:
+            await interaction.response.send_message(
+                "Wystąpił błąd zapisu danych. Spróbuj ponownie później.", ephemeral=True
+            )
+            return
+
+        # Jesli zmienilismy imie/nazwisko, od razu odswiez nick (z aktualna partia)
+        if pole.value in ("firstName", "lastName"):
+            refreshed = await db.get(f"citizens/{uzytkownik.id}")
+            if refreshed:
+                await apply_nickname(
+                    uzytkownik,
+                    refreshed.get("party", "Niezależny"),
+                    refreshed.get("firstName", ""),
+                    refreshed.get("lastName", ""),
+                )
+
+        await interaction.response.send_message(
+            f"Zaktualizowano pole **{pole.name}** dla {uzytkownik.mention} → `{wartosc.strip()}`.",
+            ephemeral=True,
+        )
+
+    @app_commands.command(name="postac-usun", description="Usuwa na trwałe rekord obywatela (admin).")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.describe(uzytkownik="Czyj rekord chcesz usunąć")
+    async def postac_usun(self, interaction: discord.Interaction, uzytkownik: discord.Member):
+        if not isinstance(interaction.user, discord.Member) or not is_admin(interaction.user):
+            await interaction.response.send_message("Nie masz uprawnień do tej komendy.", ephemeral=True)
+            return
+
+        citizen = await db.get(f"citizens/{uzytkownik.id}")
+        if not citizen:
+            await interaction.response.send_message(
+                f"{uzytkownik.mention} nie ma rekordu obywatela do usunięcia.", ephemeral=True
+            )
+            return
+
+        await db.delete(f"citizens/{uzytkownik.id}")
+
+        ssn = citizen.get("ssn")
+        if ssn:
+            await db.delete(f"ssn_index/{ssn.replace('-', '_')}")
+
+        removed_roles = []
+        for role_id in (
+            config.ROLE_VERIFIED_ID,
+            config.ROLE_CITIZEN_ID,
+            config.ROLE_SENATOR_ID,
+            config.ROLE_REPRESENTATIVE_ID,
+        ):
+            if role_id:
+                role = uzytkownik.guild.get_role(role_id)
+                if role and role in uzytkownik.roles:
+                    try:
+                        await uzytkownik.remove_roles(role, reason=f"Usuniecie rekordu obywatela przez {interaction.user}")
+                        removed_roles.append(role.name)
+                    except discord.Forbidden:
+                        pass
+
+        try:
+            await uzytkownik.edit(nick=None, reason="Usuniecie rekordu obywatela")
+        except discord.Forbidden:
+            pass
+
+        await interaction.response.send_message(
+            f"Rekord obywatela {uzytkownik.mention} został usunięty (role zdjęte: "
+            f"{', '.join(removed_roles) if removed_roles else 'brak'}).",
+            ephemeral=True,
+        )
 
 
 async def setup(bot: commands.Bot):

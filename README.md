@@ -122,6 +122,9 @@ ich nie zobaczą we wpisywanym `/`.
 | `/wybory status` | każdy | Sprawdza status wyborów |
 | `/stopien nadaj` | admin | Nadaje stopień naukowy obywatelowi |
 | `/postac` | każdy | Pokazuje profil postaci po nicku Discord ALBO po SSN (imię, nazwisko, stopień, partia, zamieszkanie, SSN) |
+| `/postac-edytuj` | admin | Poprawia imię, nazwisko, zamieszkanie lub rok urodzenia obywatela |
+| `/postac-usun` | admin | Usuwa na trwałe rekord obywatela, zdejmuje role, czyści nick |
+| `/kongres` | każdy | Pokazuje aktualny skład Senatu i Izby Reprezentantów |
 | `/zmien-partie` | obywatel | Zmienia własną przynależność partyjną (aktualizuje też nick) |
 
 ## Nick na serwerze
