@@ -3,6 +3,7 @@ cogs/party.py
 
 Komenda /zmien-partie <partia> - pozwala zweryfikowanemu obywatelowi
 samodzielnie zmienic przynaleznosc partyjna na jedna z list w config.py.
+Po zmianie aktualizuje tez tag partii w nicku na serwerze.
 """
 
 import discord
@@ -11,6 +12,7 @@ from discord.ext import commands
 
 import config
 import firebase_client as db
+from nickname_utils import apply_nickname
 
 
 class PartyCog(commands.Cog):
@@ -30,6 +32,15 @@ class PartyCog(commands.Cog):
             return
 
         await db.patch(f"citizens/{interaction.user.id}", {"party": partia.value})
+
+        if isinstance(interaction.user, discord.Member):
+            await apply_nickname(
+                interaction.user,
+                partia.value,
+                citizen.get("firstName", ""),
+                citizen.get("lastName", ""),
+            )
+
         await interaction.response.send_message(
             f"Twoja przynaleznosc partyjna zostala zmieniona na **{partia.value}**.", ephemeral=True
         )

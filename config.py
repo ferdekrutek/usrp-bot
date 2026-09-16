@@ -41,6 +41,15 @@ PARTIES = [
     "Niezależny",
 ]
 
+# Tag doklejany do nicku na serwerze w formacie "[TAG] Imie Nazwisko".
+# Klucze musza dokladnie odpowiadac wartosciom z listy PARTIES.
+PARTY_TAGS = {
+    "Partia Demokratyczna": "DEM.",
+    "Partia Republikańska": "REP.",
+    "Partia Libertariańska": "LIB.",
+    "Niezależny": "BEZP.",
+}
+
 DEGREES = [
     "Brak",
     "Licencjat (Bachelor's Degree)",

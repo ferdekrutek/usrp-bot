@@ -24,6 +24,7 @@ class ElectionsCog(commands.GroupCog, name="wybory"):
         super().__init__()
 
     @app_commands.command(name="otworz", description="Otwiera wybory (admin).")
+    @app_commands.default_permissions(manage_guild=True)
     async def otworz(self, interaction: discord.Interaction):
         if not isinstance(interaction.user, discord.Member) or not is_admin(interaction.user):
             await interaction.response.send_message("Nie masz uprawnien do tej komendy.", ephemeral=True)
@@ -32,6 +33,7 @@ class ElectionsCog(commands.GroupCog, name="wybory"):
         await interaction.response.send_message("Wybory zostaly otwarte.")
 
     @app_commands.command(name="zamknij", description="Zamyka wybory (admin).")
+    @app_commands.default_permissions(manage_guild=True)
     async def zamknij(self, interaction: discord.Interaction):
         if not isinstance(interaction.user, discord.Member) or not is_admin(interaction.user):
             await interaction.response.send_message("Nie masz uprawnien do tej komendy.", ephemeral=True)

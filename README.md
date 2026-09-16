@@ -20,7 +20,7 @@ obywatel-bot/
 │   ├── applications.py      # panel podań Senator/Reprezentant
 │   ├── elections.py         # /wybory otworz|zamknij|status
 │   ├── degrees.py           # /stopien nadaj
-│   ├── citizen.py           # /obywatel
+│   ├── citizen.py           # /postac
 │   └── party.py             # /zmien-partie
 ├── requirements.txt
 ├── render.yaml
@@ -99,23 +99,45 @@ Sprawdziłem aktualny cennik Render (sierpień 2026):
 ## Wystawianie paneli na serwerze
 Po wdrożeniu, na kanale, gdzie mają się znaleźć panele:
 - `/panel-weryfikacja` — wystawia embed z przyciskiem weryfikacji Roblox.
-- `/panel-podania` — wystawia embed z przyciskami „Aplikuj na Senatora” /
-  „Aplikuj na Reprezentanta” (styl jak na Twoim przykładzie z Discorda).
+- `/panel-senat` — osobny embed z przyciskiem „Aplikuj na Senatora”.
+- `/panel-izba` — osobny embed z przyciskiem „Aplikuj na Reprezentanta”.
 
-Oba panele działają nawet po restarcie bota — przyciski mają stałe
+Wszystkie panele działają nawet po restarcie bota — przyciski mają stałe
 `custom_id`, a oczekujące podania są odtwarzane z Firebase przy starcie.
+
+Komendy `/panel-weryfikacja`, `/panel-senat`, `/panel-izba`, `/wybory otworz`,
+`/wybory zamknij` i `/stopien nadaj` są ukryte w menu komend dla osób bez
+uprawnienia „Zarządzaj serwerem” (Discord robi to automatycznie na
+podstawie `default_permissions` w kodzie) — zwykli użytkownicy w ogóle
+ich nie zobaczą we wpisywanym `/`.
 
 ## Lista komend
 | Komenda | Kto używa | Co robi |
 |---|---|---|
 | `/panel-weryfikacja` | admin | Wystawia panel weryfikacji Roblox |
-| `/panel-podania` | admin | Wystawia panel podań Senator/Reprezentant |
+| `/panel-senat` | admin | Wystawia panel podań na Senatora |
+| `/panel-izba` | admin | Wystawia panel podań na Reprezentanta |
 | `/wybory otworz` | admin | Otwiera wybory (flaga w Firebase) |
 | `/wybory zamknij` | admin | Zamyka wybory |
 | `/wybory status` | każdy | Sprawdza status wyborów |
 | `/stopien nadaj` | admin | Nadaje stopień naukowy obywatelowi |
-| `/obywatel` | każdy | Pokazuje profil obywatela (imię, nazwisko, stopień, partia, zamieszkanie, SSN) |
-| `/zmien-partie` | obywatel | Zmienia własną przynależność partyjną |
+| `/postac` | każdy | Pokazuje profil postaci po nicku Discord ALBO po SSN (imię, nazwisko, stopień, partia, zamieszkanie, SSN) |
+| `/zmien-partie` | obywatel | Zmienia własną przynależność partyjną (aktualizuje też nick) |
+
+## Nick na serwerze
+Po weryfikacji, po złożeniu podania do Senatu/Izby i po `/zmien-partie`,
+bot ustawia nick w formacie `[TAG] Imię Nazwisko`, np. `[REP.] Jan Kowalski`.
+Tagi (edytowalne w `config.py` pod `PARTY_TAGS`): `DEM.` (Partia
+Demokratyczna), `REP.` (Partia Republikańska), `LIB.` (Partia
+Libertariańska — dodałem ten tag, bo partia jest na liście, ale nie
+podałeś dla niej skrótu; zmień w `config.py`, jeśli chcesz inny),
+`BEZP.` (Niezależny, domyślnie po weryfikacji).
+
+Żeby to zadziałało, **rola bota musi być wyżej niż rola najwyższej rangi
+każdego obywatela** (tak samo jak przy nadawaniu ról) — inaczej Discord
+zablokuje zmianę nicku i bot po prostu to zaloguje bez wywalania błędu.
+Discord nigdy nie pozwala botom zmieniać nicku właściciela serwera —
+to ograniczenie samego Discorda, nie da się go obejść.
 
 ## Dodawanie kolejnych funkcji w przyszłości
 Projekt jest podzielony na cogi — każda funkcja to osobny plik w `cogs/`.

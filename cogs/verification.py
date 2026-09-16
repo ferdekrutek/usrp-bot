@@ -18,6 +18,7 @@ from discord.ext import commands
 
 import config
 import firebase_client as db
+from nickname_utils import apply_nickname
 from roblox_api import lookup_roblox_user
 from ssn_utils import generate_unique_ssn, reserve_ssn
 
@@ -113,6 +114,8 @@ class VerificationModal(discord.ui.Modal, title="Weryfikacja obywatela"):
                         except discord.Forbidden:
                             pass
 
+            await apply_nickname(member, record["party"], record["firstName"], record["lastName"])
+
         embed = discord.Embed(
             title="Weryfikacja zakończona pomyślnie",
             color=discord.Color.green(),
@@ -149,8 +152,10 @@ class VerificationCog(commands.Cog):
         self.bot.add_view(VerificationView())
 
     @app_commands.command(name="panel-weryfikacja", description="Wystawia panel weryfikacji Roblox na tym kanale (admin).")
+    @app_commands.default_permissions(manage_guild=True)
     @app_commands.checks.has_permissions(manage_guild=True)
     async def panel_weryfikacja(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True, thinking=True)
         embed = discord.Embed(
             title="🪪 Weryfikacja obywatela",
             description=(
@@ -161,7 +166,7 @@ class VerificationCog(commands.Cog):
             color=discord.Color.blurple(),
         )
         await interaction.channel.send(embed=embed, view=VerificationView())
-        await interaction.response.send_message("Panel weryfikacji został wystawiony.", ephemeral=True)
+        await interaction.followup.send("Panel weryfikacji został wystawiony.", ephemeral=True)
 
     @panel_weryfikacja.error
     async def panel_weryfikacja_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):

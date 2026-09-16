@@ -22,6 +22,7 @@ class DegreesCog(commands.GroupCog, name="stopien"):
         super().__init__()
 
     @app_commands.command(name="nadaj", description="Nadaje stopien naukowy obywatelowi (admin).")
+    @app_commands.default_permissions(manage_guild=True)
     @app_commands.choices(
         stopien=[app_commands.Choice(name=d, value=d) for d in config.DEGREES]
     )

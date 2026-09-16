@@ -1,13 +1,17 @@
 """
 cogs/applications.py
 
-Panel podań (jak na obrazku od użytkownika): dwa przyciski — "Aplikuj na
-Senatora" i "Aplikuj na Reprezentanta". Kliknięcie otwiera formularz
-(imię, nazwisko, partia, region). Zgłoszenie trafia do kanału
-administracji z przyciskami Akceptuj / Odrzuć.
+Dwa osobne panele podan:
+- /panel-senat  -> jeden przycisk "Aplikuj na Senatora"
+- /panel-izba   -> jeden przycisk "Aplikuj na Reprezentanta"
 
-Podania i ich status trzymane są w Firebase pod /applications/{id},
-dzięki czemu panel akceptacji odbudowuje się nawet po restarcie bota.
+Kliknięcie otwiera formularz (imię, nazwisko, partia, region). Zgłoszenie
+trafia do kanału administracji z przyciskami Akceptuj / Odrzuć. Po zlozeniu
+podania partia obywatela jest aktualizowana i nick na serwerze zmienia sie
+na "[TAG_PARTII] Imie Nazwisko" (np. "[REP.] Jan Kowalski").
+
+Podania i ich status trzymane sa w Firebase pod /applications/{id},
+dzieki czemu panel akceptacji odbudowuje sie nawet po restarcie bota.
 """
 
 from datetime import datetime, timezone
@@ -18,6 +22,7 @@ from discord.ext import commands
 
 import config
 import firebase_client as db
+from nickname_utils import apply_nickname
 from permissions import is_admin
 
 APPLY_SENATOR_CUSTOM_ID = "applications:apply_senator"
@@ -58,17 +63,19 @@ class ApplicationModal(discord.ui.Modal, title="Formularz kandydata"):
         citizen = await db.get(f"citizens/{interaction.user.id}")
         if not citizen:
             await interaction.followup.send(
-                "Musisz najpierw przejść weryfikację (rola Obywatel), zanim złożysz podanie.",
+                "Musisz najpierw przejsc weryfikacje (rola Obywatel), zanim zlozysz podanie.",
                 ephemeral=True,
             )
             return
 
         if not _party_is_valid(str(self.party.value)):
             await interaction.followup.send(
-                "Nieprawidłowa partia. Dostępne opcje: " + ", ".join(config.PARTIES),
+                "Nieprawidlowa partia. Dostepne opcje: " + ", ".join(config.PARTIES),
                 ephemeral=True,
             )
             return
+
+        normalized_party = _normalize_party(str(self.party.value))
 
         application = {
             "discordId": str(interaction.user.id),
@@ -76,7 +83,7 @@ class ApplicationModal(discord.ui.Modal, title="Formularz kandydata"):
             "position": self.position,
             "firstName": str(self.first_name.value).strip(),
             "lastName": str(self.last_name.value).strip(),
-            "party": _normalize_party(str(self.party.value)),
+            "party": normalized_party,
             "region": str(self.region.value).strip(),
             "status": "pending",
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -85,12 +92,23 @@ class ApplicationModal(discord.ui.Modal, title="Formularz kandydata"):
         app_id = await db.push("applications", application)
         if not app_id:
             await interaction.followup.send(
-                "Wystąpił błąd zapisu podania. Spróbuj ponownie później.", ephemeral=True
+                "Wystapil blad zapisu podania. Sprobuj ponownie pozniej.", ephemeral=True
             )
             return
 
+        # Zlozenie podania deklaruje partie kandydata "publicznie" - aktualizujemy
+        # rekord obywatela i nick na serwerze od razu, a nie dopiero po akceptacji.
+        await db.patch(f"citizens/{interaction.user.id}", {"party": normalized_party})
+        if isinstance(interaction.user, discord.Member):
+            await apply_nickname(
+                interaction.user,
+                normalized_party,
+                citizen.get("firstName", application["firstName"]),
+                citizen.get("lastName", application["lastName"]),
+            )
+
         await interaction.followup.send(
-            "Twoje podanie zostało wysłane do administracji. Otrzymasz wiadomość prywatną z decyzją.",
+            "Twoje podanie zostalo wyslane do administracji. Otrzymasz wiadomosc prywatna z decyzja.",
             ephemeral=True,
         )
 
@@ -130,17 +148,17 @@ class AdminReviewView(discord.ui.View):
         member = interaction.user
         if not isinstance(member, discord.Member) or not is_admin(member):
             await interaction.response.send_message(
-                "Nie masz uprawnień do rozpatrywania podań.", ephemeral=True
+                "Nie masz uprawnien do rozpatrywania podan.", ephemeral=True
             )
             return
 
         application = await db.get(f"applications/{self.app_id}")
         if not application:
-            await interaction.response.send_message("Nie znaleziono tego podania (mogło zostać usunięte).", ephemeral=True)
+            await interaction.response.send_message("Nie znaleziono tego podania (moglo zostac usuniete).", ephemeral=True)
             return
 
         if application.get("status") != "pending":
-            await interaction.response.send_message("To podanie zostało już rozpatrzone.", ephemeral=True)
+            await interaction.response.send_message("To podanie zostalo juz rozpatrzone.", ephemeral=True)
             return
 
         await db.patch(f"applications/{self.app_id}", {
@@ -149,7 +167,6 @@ class AdminReviewView(discord.ui.View):
             "reviewedAt": datetime.now(timezone.utc).isoformat(),
         })
 
-        # Opcjonalne nadanie roli po akceptacji
         if status == "accepted" and interaction.guild:
             role_id = (
                 config.ROLE_SENATOR_ID
@@ -178,7 +195,7 @@ class AdminReviewView(discord.ui.View):
         if applicant:
             try:
                 await applicant.send(
-                    f"Twoje podanie na **{application['position']}** zostało **{decision_pl}**."
+                    f"Twoje podanie na **{application['position']}** zostalo **{decision_pl}**."
                 )
             except discord.Forbidden:
                 pass
@@ -192,7 +209,7 @@ class AdminReviewView(discord.ui.View):
         await self._finalize(interaction, "rejected")
 
 
-class ApplicationsView(discord.ui.View):
+class SenatorApplicationView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
@@ -204,6 +221,11 @@ class ApplicationsView(discord.ui.View):
     )
     async def apply_senator(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.send_modal(ApplicationModal("Senator"))
+
+
+class RepresentativeApplicationView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
 
     @discord.ui.button(
         label="Aplikuj na Reprezentanta",
@@ -218,11 +240,12 @@ class ApplicationsView(discord.ui.View):
 class ApplicationsCog(commands.Cog):
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.bot.add_view(ApplicationsView())
+        self.bot.add_view(SenatorApplicationView())
+        self.bot.add_view(RepresentativeApplicationView())
 
     async def cog_load(self):
-        # Odbudowuje przyciski Akceptuj/Odrzuć dla wszystkich podań
-        # oczekujących, żeby działały też po restarcie bota.
+        # Odbudowuje przyciski Akceptuj/Odrzuc dla wszystkich podan
+        # oczekujacych, zeby dzialaly tez po restarcie bota.
         applications = await db.get("applications")
         if not applications:
             return
@@ -230,26 +253,46 @@ class ApplicationsCog(commands.Cog):
             if application and application.get("status") == "pending":
                 self.bot.add_view(AdminReviewView(app_id))
 
-    @app_commands.command(name="panel-podania", description="Wystawia panel podań na Senatora/Reprezentanta na tym kanale (admin).")
+    @app_commands.command(name="panel-senat", description="Wystawia panel podan na Senatora na tym kanale (admin).")
+    @app_commands.default_permissions(manage_guild=True)
     @app_commands.checks.has_permissions(manage_guild=True)
-    async def panel_podania(self, interaction: discord.Interaction):
+    async def panel_senat(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True, thinking=True)
         embed = discord.Embed(
-            title="🏛️ REKRUTACJA — SENAT I IZBA REPREZENTANTÓW",
+            title="🏛️ REKRUTACJA — SENAT",
             description=(
-                "Aplikuj na stanowisko Senatora lub członka Izby Reprezentantów.\n\n"
-                "Kliknij przycisk poniżej, wybierz partię i wypełnij formularz. "
-                "Administracja rozpatrzy Twoje zgłoszenie."
+                "Aplikuj na stanowisko Senatora.\n\n"
+                "Kliknij przycisk ponizej, wybierz partie i wypelnij formularz. "
+                "Administracja rozpatrzy Twoje zgloszenie."
             ),
             color=discord.Color.dark_red(),
         )
-        await interaction.channel.send(embed=embed, view=ApplicationsView())
-        await interaction.response.send_message("Panel podań został wystawiony.", ephemeral=True)
+        await interaction.channel.send(embed=embed, view=SenatorApplicationView())
+        await interaction.followup.send("Panel podan na Senatora zostal wystawiony.", ephemeral=True)
 
-    @panel_podania.error
-    async def panel_podania_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+    @app_commands.command(name="panel-izba", description="Wystawia panel podan na Reprezentanta na tym kanale (admin).")
+    @app_commands.default_permissions(manage_guild=True)
+    @app_commands.checks.has_permissions(manage_guild=True)
+    async def panel_izba(self, interaction: discord.Interaction):
+        await interaction.response.defer(ephemeral=True, thinking=True)
+        embed = discord.Embed(
+            title="📜 REKRUTACJA — IZBA REPREZENTANTÓW",
+            description=(
+                "Aplikuj na stanowisko czlonka Izby Reprezentantow.\n\n"
+                "Kliknij przycisk ponizej, wybierz partie i wypelnij formularz. "
+                "Administracja rozpatrzy Twoje zgloszenie."
+            ),
+            color=discord.Color.dark_blue(),
+        )
+        await interaction.channel.send(embed=embed, view=RepresentativeApplicationView())
+        await interaction.followup.send("Panel podan na Reprezentanta zostal wystawiony.", ephemeral=True)
+
+    @panel_senat.error
+    @panel_izba.error
+    async def panel_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.MissingPermissions):
             await interaction.response.send_message(
-                "Nie masz uprawnień do użycia tej komendy.", ephemeral=True
+                "Nie masz uprawnien do uzycia tej komendy.", ephemeral=True
             )
 
 
