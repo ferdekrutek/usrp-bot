@@ -55,8 +55,11 @@ Jeśli tworzysz nową:
 Włącz w Discordzie tryb developera (Ustawienia → Zaawansowane → Tryb
 developera), kliknij prawym na rolę/kanał → **Kopiuj ID** i uzupełnij:
 - `ROLE_VERIFIED_ID`, `ROLE_CITIZEN_ID` — role nadawane po weryfikacji.
-- `ROLE_SENATOR_ID`, `ROLE_REPRESENTATIVE_ID` — opcjonalne, nadawane po
-  akceptacji podania (zostaw `0`, jeśli nie chcesz automatycznego nadawania).
+- `ROLE_SENATOR_IDS`, `ROLE_REPRESENTATIVE_IDS` — role nadawane PO AKCEPTACJI
+  podania. Możesz wpisać dowolnie wiele ID po przecinku, np.
+  `ROLE_SENATOR_IDS=123456789012345678,234567890123456789` — przydatne, jeśli
+  senator ma dostawać np. rolę „Senator” i osobno rolę „Kongres”. Zostaw puste,
+  jeśli nie chcesz automatycznego nadawania.
 - `ADMIN_ROLE_ID` — rola uprawniona do komend administracyjnych (opcjonalne,
   jeśli masz uprawnienie „Zarządzaj serwerem”, i tak zadziała).
 - `APPLICATIONS_REVIEW_CHANNEL_ID` — kanał, na który trafiają podania do

@@ -23,11 +23,21 @@ GUILD_ID = int(os.getenv("GUILD_ID", "0")) or None
 FIREBASE_URL = os.getenv("FIREBASE_URL", "").rstrip("/")
 FIREBASE_SECRET = os.getenv("FIREBASE_SECRET", "")
 
+def _parse_id_list(raw: str) -> list[int]:
+    """Parsuje '111,222, 333' -> [111, 222, 333]. Puste/blednee wpisy sa pomijane."""
+    return [int(part.strip()) for part in raw.split(",") if part.strip().isdigit()]
+
+
 # ====== Role ======
 ROLE_VERIFIED_ID = int(os.getenv("ROLE_VERIFIED_ID", "0"))          # rola "Zweryfikowany"
 ROLE_CITIZEN_ID = int(os.getenv("ROLE_CITIZEN_ID", "0"))            # rola "Obywatel"
-ROLE_SENATOR_ID = int(os.getenv("ROLE_SENATOR_ID", "0"))            # opcjonalnie, 0 = wyłączone
-ROLE_REPRESENTATIVE_ID = int(os.getenv("ROLE_REPRESENTATIVE_ID", "0"))  # opcjonalnie, 0 = wyłączone
+
+# Role nadawane PO AKCEPTACJI podania - moze byc ich dowolnie wiele,
+# wpisane po przecinku w jednej zmiennej srodowiskowej, np.:
+# ROLE_SENATOR_IDS=123456789012345678,234567890123456789
+ROLE_SENATOR_IDS = _parse_id_list(os.getenv("ROLE_SENATOR_IDS", ""))
+ROLE_REPRESENTATIVE_IDS = _parse_id_list(os.getenv("ROLE_REPRESENTATIVE_IDS", ""))
+
 ADMIN_ROLE_ID = int(os.getenv("ADMIN_ROLE_ID", "0"))                # rola administracji uprawniona do komend admin.
 
 # ====== Kanały ======

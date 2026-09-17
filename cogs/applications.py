@@ -6,9 +6,13 @@ Dwa osobne panele podan:
 - /panel-izba   -> jeden przycisk "Aplikuj na Reprezentanta"
 
 Kliknięcie otwiera formularz (imię, nazwisko, partia, region). Zgłoszenie
-trafia do kanału administracji z przyciskami Akceptuj / Odrzuć. Po zlozeniu
-podania partia obywatela jest aktualizowana i nick na serwerze zmienia sie
-na "[TAG_PARTII] Imie Nazwisko" (np. "[REP.] Jan Kowalski").
+trafia do kanału administracji z przyciskami Akceptuj / Odrzuć - embed
+pokazuje od razu, jakie role zostana nadane w razie akceptacji (lista
+ról konfigurowana w config.py przez ROLE_SENATOR_IDS / ROLE_REPRESENTATIVE_IDS,
+moze byc ich dowolnie wiele).
+
+Po zlozeniu podania partia obywatela jest aktualizowana i nick na
+serwerze zmienia sie na "[TAG_PARTII] Imie Nazwisko" (np. "[REP.] Jan Kowalski").
 
 Podania i ich status trzymane sa w Firebase pod /applications/{id},
 dzieki czemu panel akceptacji odbudowuje sie nawet po restarcie bota.
@@ -38,6 +42,22 @@ def _normalize_party(party: str) -> str:
         if p.lower() == party.strip().lower():
             return p
     return party.strip()
+
+
+def _role_ids_for_position(position: str) -> list[int]:
+    return config.ROLE_SENATOR_IDS if position == "Senator" else config.ROLE_REPRESENTATIVE_IDS
+
+
+def _describe_roles(guild: discord.Guild, position: str) -> str:
+    role_ids = _role_ids_for_position(position)
+    if not role_ids:
+        return "_Brak skonfigurowanych ról dla tego stanowiska_"
+
+    mentions = []
+    for role_id in role_ids:
+        role = guild.get_role(role_id) if guild else None
+        mentions.append(role.mention if role else f"`{role_id}` (nie znaleziono roli)")
+    return ", ".join(mentions)
 
 
 class ApplicationModal(discord.ui.Modal, title="Formularz kandydata"):
@@ -107,33 +127,47 @@ class ApplicationModal(discord.ui.Modal, title="Formularz kandydata"):
                 citizen.get("lastName", application["lastName"]),
             )
 
-        await interaction.followup.send(
-            "Twoje podanie zostalo wyslane do administracji. Otrzymasz wiadomosc prywatna z decyzja.",
-            ephemeral=True,
+        embed = discord.Embed(
+            title="✅ Podanie wysłane",
+            description=(
+                f"Twoje podanie na **{self.position}** zostało przekazane administracji.\n"
+                "Otrzymasz wiadomość prywatną z decyzją."
+            ),
+            color=discord.Color.green(),
         )
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
         review_channel_id = config.APPLICATIONS_REVIEW_CHANNEL_ID
         if review_channel_id:
             channel = interaction.client.get_channel(review_channel_id)
             if channel:
-                embed = _build_review_embed(app_id, application)
+                embed = _build_review_embed(app_id, application, interaction.guild)
                 view = AdminReviewView(app_id)
                 message = await channel.send(embed=embed, view=view)
                 interaction.client.add_view(view, message_id=message.id)
 
 
-def _build_review_embed(app_id: str, application: dict) -> discord.Embed:
+def _build_review_embed(app_id: str, application: dict, guild: discord.Guild) -> discord.Embed:
+    position_emoji = "🏛️" if application["position"] == "Senator" else "📜"
     embed = discord.Embed(
-        title=f"Nowe podanie — {application['position']}",
+        title=f"{position_emoji} Nowe podanie — {application['position']}",
         color=discord.Color.orange(),
-        description=(
-            f"**Kandydat:** {application['firstName']} {application['lastName']}\n"
-            f"**Discord:** {application['discordTag']} (<@{application['discordId']}>)\n"
-            f"**Partia:** {application['party']}\n"
-            f"**Region:** {application['region']}"
-        ),
+    )
+    embed.add_field(
+        name="Kandydat",
+        value=f"{application['firstName']} {application['lastName']}",
+        inline=True,
+    )
+    embed.add_field(name="Discord", value=f"<@{application['discordId']}>", inline=True)
+    embed.add_field(name="Partia", value=application["party"], inline=True)
+    embed.add_field(name="Region", value=application["region"], inline=True)
+    embed.add_field(
+        name="Role po akceptacji",
+        value=_describe_roles(guild, application["position"]) if guild else "_Nieznane (brak serwera)_",
+        inline=False,
     )
     embed.set_footer(text=f"ID podania: {app_id}")
+    embed.timestamp = datetime.now(timezone.utc)
     return embed
 
 
@@ -167,20 +201,18 @@ class AdminReviewView(discord.ui.View):
             "reviewedAt": datetime.now(timezone.utc).isoformat(),
         })
 
+        granted_roles = []
         if status == "accepted" and interaction.guild:
-            role_id = (
-                config.ROLE_SENATOR_ID
-                if application["position"] == "Senator"
-                else config.ROLE_REPRESENTATIVE_ID
-            )
-            if role_id:
-                role = interaction.guild.get_role(role_id)
-                target = interaction.guild.get_member(int(application["discordId"]))
-                if role and target:
-                    try:
-                        await target.add_roles(role, reason=f"Podanie zaakceptowane przez {member}")
-                    except discord.Forbidden:
-                        pass
+            target = interaction.guild.get_member(int(application["discordId"]))
+            if target:
+                for role_id in _role_ids_for_position(application["position"]):
+                    role = interaction.guild.get_role(role_id)
+                    if role:
+                        try:
+                            await target.add_roles(role, reason=f"Podanie zaakceptowane przez {member}")
+                            granted_roles.append(role.name)
+                        except discord.Forbidden:
+                            pass
 
         decision_pl = "zaakceptowane ✅" if status == "accepted" else "odrzucone ❌"
         for item in self.children:
@@ -188,7 +220,10 @@ class AdminReviewView(discord.ui.View):
 
         embed = interaction.message.embeds[0]
         embed.color = discord.Color.green() if status == "accepted" else discord.Color.red()
-        embed.add_field(name="Decyzja", value=f"{decision_pl} przez {member.mention}", inline=False)
+        decision_text = f"{decision_pl} przez {member.mention}"
+        if granted_roles:
+            decision_text += f"\nNadane role: {', '.join(granted_roles)}"
+        embed.add_field(name="Decyzja", value=decision_text, inline=False)
         await interaction.response.edit_message(embed=embed, view=self)
 
         applicant = interaction.client.get_user(int(application["discordId"]))
@@ -200,11 +235,11 @@ class AdminReviewView(discord.ui.View):
             except discord.Forbidden:
                 pass
 
-    @discord.ui.button(label="Akceptuj", style=discord.ButtonStyle.success, custom_id="applications:accept:placeholder")
+    @discord.ui.button(label="Akceptuj", style=discord.ButtonStyle.success, custom_id="applications:accept:placeholder", emoji="✅")
     async def accept_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._finalize(interaction, "accepted")
 
-    @discord.ui.button(label="Odrzuć", style=discord.ButtonStyle.danger, custom_id="applications:reject:placeholder")
+    @discord.ui.button(label="Odrzuć", style=discord.ButtonStyle.danger, custom_id="applications:reject:placeholder", emoji="❌")
     async def reject_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._finalize(interaction, "rejected")
 
@@ -259,16 +294,21 @@ class ApplicationsCog(commands.Cog):
     async def panel_senat(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True, thinking=True)
         embed = discord.Embed(
-            title="🏛️ REKRUTACJA — SENAT",
+            title="🏛️ Senat Stanów Zjednoczonych",
             description=(
-                "Aplikuj na stanowisko Senatora.\n\n"
-                "Kliknij przycisk ponizej, wybierz partie i wypelnij formularz. "
-                "Administracja rozpatrzy Twoje zgloszenie."
+                "**Chcesz reprezentować swój stan w Senacie?**\n\n"
+                "Kliknij przycisk poniżej i wypełnij formularz. Będziesz "
+                "musiał/a podać imię, nazwisko, przynależność partyjną oraz "
+                "region, z którego startujesz.\n\n"
+                "Administracja rozpatrzy Twoje zgłoszenie i poinformuje Cię "
+                "o decyzji wiadomością prywatną."
             ),
             color=discord.Color.dark_red(),
         )
+        embed.set_footer(text="Rekrutacja do Senatu")
+        embed.timestamp = datetime.now(timezone.utc)
         await interaction.channel.send(embed=embed, view=SenatorApplicationView())
-        await interaction.followup.send("Panel podan na Senatora zostal wystawiony.", ephemeral=True)
+        await interaction.followup.send("Panel podań na Senatora został wystawiony.", ephemeral=True)
 
     @app_commands.command(name="panel-izba", description="Wystawia panel podan na Reprezentanta na tym kanale (admin).")
     @app_commands.default_permissions(manage_guild=True)
@@ -276,16 +316,21 @@ class ApplicationsCog(commands.Cog):
     async def panel_izba(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True, thinking=True)
         embed = discord.Embed(
-            title="📜 REKRUTACJA — IZBA REPREZENTANTÓW",
+            title="📜 Izba Reprezentantów",
             description=(
-                "Aplikuj na stanowisko czlonka Izby Reprezentantow.\n\n"
-                "Kliknij przycisk ponizej, wybierz partie i wypelnij formularz. "
-                "Administracja rozpatrzy Twoje zgloszenie."
+                "**Chcesz reprezentować swój region w Izbie Reprezentantów?**\n\n"
+                "Kliknij przycisk poniżej i wypełnij formularz. Będziesz "
+                "musiał/a podać imię, nazwisko, przynależność partyjną oraz "
+                "region, z którego startujesz.\n\n"
+                "Administracja rozpatrzy Twoje zgłoszenie i poinformuje Cię "
+                "o decyzji wiadomością prywatną."
             ),
             color=discord.Color.dark_blue(),
         )
+        embed.set_footer(text="Rekrutacja do Izby Reprezentantów")
+        embed.timestamp = datetime.now(timezone.utc)
         await interaction.channel.send(embed=embed, view=RepresentativeApplicationView())
-        await interaction.followup.send("Panel podan na Reprezentanta zostal wystawiony.", ephemeral=True)
+        await interaction.followup.send("Panel podań na Reprezentanta został wystawiony.", ephemeral=True)
 
     @panel_senat.error
     @panel_izba.error
