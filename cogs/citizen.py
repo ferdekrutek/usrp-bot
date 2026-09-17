@@ -24,18 +24,32 @@ import config
 import firebase_client as db
 from nickname_utils import apply_nickname
 from permissions import is_admin
+from positions_utils import get_highest_position
 
 
-def _build_profile_embed(citizen: dict, discord_tag: str, member: Optional[discord.Member] = None) -> discord.Embed:
+async def _build_profile_embed(citizen: dict, discord_tag: str, member: Optional[discord.Member] = None) -> discord.Embed:
     embed = discord.Embed(
         title=f"🪪 {citizen.get('firstName', '?')} {citizen.get('lastName', '?')}",
         color=discord.Color.blue(),
     )
+
+    highest_position = await get_highest_position(member) if member is not None else None
+    if highest_position:
+        embed.add_field(name="Najwyższe zajmowane stanowisko", value=f"**{highest_position}**", inline=False)
+
     embed.add_field(name="Stopień naukowy", value=citizen.get("degree", "Brak"), inline=True)
     embed.add_field(name="Partia", value=citizen.get("party", "Niezależny"), inline=True)
     embed.add_field(name="Miejsce zamieszkania", value=citizen.get("residence", "Nieznane"), inline=True)
     embed.add_field(name="SSN", value=f"`{citizen.get('ssn', 'Brak')}`", inline=True)
-    embed.add_field(name="Konto Roblox", value=citizen.get("robloxUsername", "Nieznane"), inline=True)
+
+    roblox_username = citizen.get("robloxUsername", "Nieznane")
+    roblox_user_id = citizen.get("robloxUserId")
+    if roblox_user_id:
+        roblox_value = f"[{roblox_username}](https://www.roblox.com/users/{roblox_user_id}/profile)"
+    else:
+        roblox_value = roblox_username
+    embed.add_field(name="Konto Roblox", value=roblox_value, inline=True)
+
     embed.set_footer(text=f"Discord: {discord_tag}")
     if member is not None:
         embed.set_thumbnail(url=member.display_avatar.url)
@@ -61,7 +75,7 @@ class SsnMatchSelect(discord.ui.Select):
             return
         member = interaction.guild.get_member(int(discord_id)) if interaction.guild else None
         discord_tag = citizen.get("discordTag", "Nieznany")
-        embed = _build_profile_embed(citizen, discord_tag, member)
+        embed = await _build_profile_embed(citizen, discord_tag, member)
         await interaction.response.edit_message(content=None, embed=embed, view=None)
 
 
@@ -106,7 +120,7 @@ class CitizenCog(commands.Cog):
                     f"{uzytkownik.mention} nie jest zweryfikowanym obywatelem.", ephemeral=True
                 )
                 return
-            embed = _build_profile_embed(citizen, str(uzytkownik), uzytkownik)
+            embed = await _build_profile_embed(citizen, str(uzytkownik), uzytkownik)
             await interaction.followup.send(embed=embed)
             return
 
@@ -134,7 +148,7 @@ class CitizenCog(commands.Cog):
         if len(matches) == 1:
             discord_id, citizen = matches[0]
             member = interaction.guild.get_member(int(discord_id)) if interaction.guild else None
-            embed = _build_profile_embed(citizen, citizen.get("discordTag", "Nieznany"), member)
+            embed = await _build_profile_embed(citizen, citizen.get("discordTag", "Nieznany"), member)
             await interaction.followup.send(embed=embed, ephemeral=True)
             return
 

@@ -114,6 +114,20 @@ uprawnienia „Zarządzaj serwerem” (Discord robi to automatycznie na
 podstawie `default_permissions` w kodzie) — zwykli użytkownicy w ogóle
 ich nie zobaczą we wpisywanym `/`.
 
+## Najwyższe stanowisko w /postac
+`/postac` pokazuje najwyższe zajmowane stanowisko danej osoby, wyliczane
+z jej AKTUALNYCH ról na Discordzie:
+- Role z `ROLE_SENATOR_IDS` / `ROLE_REPRESENTATIVE_IDS` liczą się
+  automatycznie jako „Senator” / „Reprezentant”.
+- Dla innych stanowisk (Prezydent, Sekretarz Stanu, Sędzia itd.) admin
+  najpierw **raz** rejestruje mapowanie komendą `/stan @rola "Nazwa
+  stanowiska"`, a potem **nadaje tę rolę osobie normalnie przez Discorda**
+  (`/stan` tylko zapamiętuje, co dana rola oznacza — nie nadaje jej nikomu).
+- „Najwyższe” = ta rola, która jest **najwyżej na liście ról serwera**
+  (Ustawienia serwera → Role). Im wyżej przeciągniesz rolę „Prezydent”
+  względem „Senator”, tym bardziej będzie nadrzędna w `/postac` — nie
+  trzeba nic dodatkowo konfigurować poza samą kolejnością ról.
+
 ## Lista komend
 | Komenda | Kto używa | Co robi |
 |---|---|---|
@@ -128,6 +142,8 @@ ich nie zobaczą we wpisywanym `/`.
 | `/postac-edytuj` | admin | Poprawia imię, nazwisko, zamieszkanie lub rok urodzenia obywatela |
 | `/postac-usun` | admin | Usuwa na trwałe rekord obywatela, zdejmuje role, czyści nick |
 | `/kongres` | każdy | Pokazuje aktualny skład Senatu i Izby Reprezentantów |
+| `/stan` | admin | Mapuje rolę Discord na nazwę stanowiska widoczną w `/postac` |
+| `/mandat-odbierz` | admin | Odbiera mandat Senatora/Reprezentanta, zdejmuje role, znika z `/kongres` |
 | `/zmien-partie` | obywatel | Zmienia własną przynależność partyjną (aktualizuje też nick) |
 
 ## Nick na serwerze
