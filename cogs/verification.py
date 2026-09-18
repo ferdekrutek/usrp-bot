@@ -104,15 +104,15 @@ class VerificationModal(discord.ui.Modal, title="Weryfikacja obywatela"):
         guild = interaction.guild
         member = interaction.user
         if guild and isinstance(member, discord.Member):
-            for role_id in (config.ROLE_VERIFIED_ID, config.ROLE_CITIZEN_ID):
-                if role_id:
-                    role = guild.get_role(role_id)
-                    if role and role not in member.roles:
-                        try:
-                            await member.add_roles(role, reason="Weryfikacja Roblox")
-                            added_roles.append(role.name)
-                        except discord.Forbidden:
-                            pass
+            role_ids_to_add = [*config.ROLE_VERIFIED_IDS, *config.ROLE_CITIZEN_IDS]
+            for role_id in role_ids_to_add:
+                role = guild.get_role(role_id)
+                if role and role not in member.roles:
+                    try:
+                        await member.add_roles(role, reason="Weryfikacja Roblox")
+                        added_roles.append(role.name)
+                    except discord.Forbidden:
+                        pass
 
             await apply_nickname(member, record["party"], record["firstName"], record["lastName"])
 

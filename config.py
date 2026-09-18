@@ -29,8 +29,11 @@ def _parse_id_list(raw: str) -> list[int]:
 
 
 # ====== Role ======
-ROLE_VERIFIED_ID = int(os.getenv("ROLE_VERIFIED_ID", "0"))          # rola "Zweryfikowany"
-ROLE_CITIZEN_ID = int(os.getenv("ROLE_CITIZEN_ID", "0"))            # rola "Obywatel"
+# Role nadawane PRZY WERYFIKACJI - moze byc ich dowolnie wiele, wpisane
+# po przecinku w jednej zmiennej srodowiskowej, np.:
+# ROLE_VERIFIED_IDS=123456789012345678,234567890123456789
+ROLE_VERIFIED_IDS = _parse_id_list(os.getenv("ROLE_VERIFIED_IDS", ""))
+ROLE_CITIZEN_IDS = _parse_id_list(os.getenv("ROLE_CITIZEN_IDS", ""))
 
 # Role nadawane PO AKCEPTACJI podania - moze byc ich dowolnie wiele,
 # wpisane po przecinku w jednej zmiennej srodowiskowej, np.:

@@ -251,8 +251,8 @@ class CitizenCog(commands.Cog):
             await db.delete(f"ssn_index/{ssn.replace('-', '_')}")
 
         role_ids_to_remove = [
-            config.ROLE_VERIFIED_ID,
-            config.ROLE_CITIZEN_ID,
+            *config.ROLE_VERIFIED_IDS,
+            *config.ROLE_CITIZEN_IDS,
             *config.ROLE_SENATOR_IDS,
             *config.ROLE_REPRESENTATIVE_IDS,
         ]

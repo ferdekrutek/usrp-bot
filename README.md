@@ -54,7 +54,9 @@ Jeśli tworzysz nową:
 ## Krok 3 — ID ról i kanałów
 Włącz w Discordzie tryb developera (Ustawienia → Zaawansowane → Tryb
 developera), kliknij prawym na rolę/kanał → **Kopiuj ID** i uzupełnij:
-- `ROLE_VERIFIED_ID`, `ROLE_CITIZEN_ID` — role nadawane po weryfikacji.
+- `ROLE_VERIFIED_IDS`, `ROLE_CITIZEN_IDS` — role nadawane po weryfikacji.
+  Tak samo jak przy Senatorze/Reprezentancie, możesz wpisać dowolnie wiele
+  ID po przecinku, np. `ROLE_VERIFIED_IDS=111111111111111111,222222222222222222`.
 - `ROLE_SENATOR_IDS`, `ROLE_REPRESENTATIVE_IDS` — role nadawane PO AKCEPTACJI
   podania. Możesz wpisać dowolnie wiele ID po przecinku, np.
   `ROLE_SENATOR_IDS=123456789012345678,234567890123456789` — przydatne, jeśli
