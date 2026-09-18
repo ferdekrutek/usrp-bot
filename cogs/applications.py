@@ -33,17 +33,6 @@ APPLY_SENATOR_CUSTOM_ID = "applications:apply_senator"
 APPLY_REPRESENTATIVE_CUSTOM_ID = "applications:apply_representative"
 
 
-def _party_is_valid(party: str) -> bool:
-    return party.strip().lower() in {p.lower() for p in config.PARTIES}
-
-
-def _normalize_party(party: str) -> str:
-    for p in config.PARTIES:
-        if p.lower() == party.strip().lower():
-            return p
-    return party.strip()
-
-
 def _role_ids_for_position(position: str) -> list[int]:
     return config.ROLE_SENATOR_IDS if position == "Senator" else config.ROLE_REPRESENTATIVE_IDS
 
@@ -67,10 +56,6 @@ class ApplicationModal(discord.ui.Modal, title="Formularz kandydata"):
 
     first_name = discord.ui.TextInput(label="Imię", max_length=32)
     last_name = discord.ui.TextInput(label="Nazwisko", max_length=32)
-    party = discord.ui.TextInput(
-        label="Przynależność do partii",
-        placeholder=", ".join(config.PARTIES),
-    )
     region = discord.ui.TextInput(
         label="Region (stan / obszar)",
         placeholder="np. Teksas",
@@ -78,33 +63,59 @@ class ApplicationModal(discord.ui.Modal, title="Formularz kandydata"):
     )
 
     async def on_submit(self, interaction: discord.Interaction):
+        citizen = await db.get(f"citizens/{interaction.user.id}")
+        if not citizen:
+            await interaction.response.send_message(
+                "Musisz najpierw przejsc weryfikacje (rola Obywatel), zanim zlozysz podanie.",
+                ephemeral=True,
+            )
+            return
+
+        view = PartySelectView(
+            position=self.position,
+            first_name=str(self.first_name.value).strip(),
+            last_name=str(self.last_name.value).strip(),
+            region=str(self.region.value).strip(),
+        )
+        await interaction.response.send_message(
+            "Ostatni krok — wybierz partię, z ramienia której startujesz:",
+            view=view,
+            ephemeral=True,
+        )
+
+
+class PartySelect(discord.ui.Select):
+    def __init__(self, position: str, first_name: str, last_name: str, region: str):
+        options = [discord.SelectOption(label=party) for party in config.PARTIES]
+        super().__init__(placeholder="Wybierz partię...", options=options, min_values=1, max_values=1)
+        self.position = position
+        self.first_name = first_name
+        self.last_name = last_name
+        self.region = region
+
+    async def callback(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True, thinking=True)
+
+        selected_party = self.values[0]
 
         citizen = await db.get(f"citizens/{interaction.user.id}")
         if not citizen:
+            # Teoretycznie juz sprawdzone w formularzu, ale na wszelki wypadek
+            # (np. ktos zostal usuniety miedzy formularzem a wyborem partii).
             await interaction.followup.send(
                 "Musisz najpierw przejsc weryfikacje (rola Obywatel), zanim zlozysz podanie.",
                 ephemeral=True,
             )
             return
 
-        if not _party_is_valid(str(self.party.value)):
-            await interaction.followup.send(
-                "Nieprawidlowa partia. Dostepne opcje: " + ", ".join(config.PARTIES),
-                ephemeral=True,
-            )
-            return
-
-        normalized_party = _normalize_party(str(self.party.value))
-
         application = {
             "discordId": str(interaction.user.id),
             "discordTag": str(interaction.user),
             "position": self.position,
-            "firstName": str(self.first_name.value).strip(),
-            "lastName": str(self.last_name.value).strip(),
-            "party": normalized_party,
-            "region": str(self.region.value).strip(),
+            "firstName": self.first_name,
+            "lastName": self.last_name,
+            "party": selected_party,
+            "region": self.region,
             "status": "pending",
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }
@@ -116,21 +127,21 @@ class ApplicationModal(discord.ui.Modal, title="Formularz kandydata"):
             )
             return
 
-        # Zlozenie podania deklaruje partie kandydata "publicznie" - aktualizujemy
-        # rekord obywatela i nick na serwerze od razu, a nie dopiero po akceptacji.
-        await db.patch(f"citizens/{interaction.user.id}", {"party": normalized_party})
+        # Wybor partii deklaruje ja "publicznie" - aktualizujemy rekord obywatela
+        # i nick na serwerze od razu, a nie dopiero po akceptacji.
+        await db.patch(f"citizens/{interaction.user.id}", {"party": selected_party})
         if isinstance(interaction.user, discord.Member):
             await apply_nickname(
                 interaction.user,
-                normalized_party,
-                citizen.get("firstName", application["firstName"]),
-                citizen.get("lastName", application["lastName"]),
+                selected_party,
+                citizen.get("firstName", self.first_name),
+                citizen.get("lastName", self.last_name),
             )
 
         embed = discord.Embed(
             title="✅ Podanie wysłane",
             description=(
-                f"Twoje podanie na **{self.position}** zostało przekazane administracji.\n"
+                f"Twoje podanie na **{self.position}** ({selected_party}) zostało przekazane administracji.\n"
                 "Otrzymasz wiadomość prywatną z decyzją."
             ),
             color=discord.Color.green(),
@@ -141,10 +152,16 @@ class ApplicationModal(discord.ui.Modal, title="Formularz kandydata"):
         if review_channel_id:
             channel = interaction.client.get_channel(review_channel_id)
             if channel:
-                embed = _build_review_embed(app_id, application, interaction.guild)
+                review_embed = _build_review_embed(app_id, application, interaction.guild)
                 view = AdminReviewView(app_id)
-                message = await channel.send(embed=embed, view=view)
+                message = await channel.send(embed=review_embed, view=view)
                 interaction.client.add_view(view, message_id=message.id)
+
+
+class PartySelectView(discord.ui.View):
+    def __init__(self, position: str, first_name: str, last_name: str, region: str):
+        super().__init__(timeout=180)
+        self.add_item(PartySelect(position, first_name, last_name, region))
 
 
 def _build_review_embed(app_id: str, application: dict, guild: discord.Guild) -> discord.Embed:
